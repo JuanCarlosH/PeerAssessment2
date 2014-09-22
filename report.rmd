@@ -1,0 +1,93 @@
+---
+output: html_document
+---
+Severe Weather Events in the United States - 1950 through 2011
+========================================================
+
+### Synopsis
+
+We analyze severe weather events in the United States to determine what event types lead to the greatest affect population health and economic consequences. As regards this analysis, population health is used to describe both fatalities and injuries. Similarly, economic consequences is used to describe both property damage and crop damage. Based on this analysis, tornadoes have the greatest impact on population health while floods generate the greatest economic consequences.
+
+### Data Processing
+
+All necessary packages for this analysis are loaded first.
+
+``` {r}
+#options(rpubs.upload.method = "internal")
+
+#options(rpubs.upload.method = "curl")
+#options(rpubs.upload.method = "rcurl")
+
+library(R.utils)
+library(ggplot2)
+library(plyr)
+```
+
+Next the data set is downloaded and extracted. This set is then loaded into the 'data' data frame.
+
+``` {r echo = TRUE}
+setwd(".")
+if(!file.exists("repdata-data-StormData.csv.bz2")){
+  file.create("repdata-data-StormData.csv.bz2")
+  URL <- "http://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2"
+  destfile <- "repdata-data-StormData.csv.bz2"
+  download.file(URL, destfile)
+}
+
+data<-read.table("repdata-data-StormData.csv.bz2", header=T, sep = ",",
+                 colClasses=c("NULL",NA,rep("NULL",4),NA,NA,rep("NULL",3)
+                              ,NA,rep("NULL",10),NA,NA,NA,NA,NA,NA,rep("NULL",9)))
+
+summary(data)
+
+```
+
+Next, we consider our two categories of analysis: human loss and economic loss. With regards to human loss, we create a subset using the appropriate columns (event type, fatalities, injuries). We then create a new column, casualities, that sums the fatalities and injuries columns. This column better reflects the true human loss created by the event. This information is then summarized by event type using the plyr package.
+
+``` {r echo = TRUE}
+health <- data[,c("EVTYPE","FATALITIES","INJURIES")]
+
+health$CASUALTIES <- health$FATALITIES + health$INJURIES
+
+healthsummary <- ddply(health, 
+                       .(EVTYPE), 
+                       summarize, 
+                       TOTAL=sum(CASUALTIES))
+```
+
+Similar processes are conducted for the appropriate economic damage related columns (property damage and crop damage). One caveat with this data is the use of exponents for damage calculations (i.e. the PROPDMGEXP column contains the value 'k' when the PROPDMG value is in 1,000s). Additional columns are constructed to input the multiplier needed for the most common exponents (billions, millions, thousands, and hundreds). This information is then computed into 'TOTAL' column. The package, plyr, is again used to summarize the data across event types.
+
+``` {r echo = TRUE}
+damage <- data[,c("EVTYPE","PROPDMG","PROPDMGEXP","CROPDMG","CROPDMGEXP")]
+
+damage$PROPMULT <- ifelse(damage$PROPDMGEXP == "B", 1000000000,
+                   ifelse(damage$PROPDMGEXP == "M", 1000000,
+                   ifelse(damage$PROPDMGEXP == "K", 1000,
+                   ifelse(damage$PROPDMGEXP == "H", 100, 0))))
+
+damage$CROPMULT <- ifelse(damage$CROPDMGEXP == "B", 1000000000,
+                   ifelse(damage$CROPDMGEXP == "M", 1000000,
+                   ifelse(damage$CROPDMGEXP == "K", 1000,
+                   ifelse(damage$CROPDMGEXP == "H", 100, 0))))
+
+damage$TOTAL <- damage$PROPDMG * damage$PROPMULT + damage$CROPDMG * damage$CROPMULT
+
+damagesummary <- ddply(damage, 
+                       .(EVTYPE), 
+                       summarize, 
+                       TOTAL=sum(TOTAL))
+```
+
+### Results
+
+The below plot details the total number of casualties (fatalities and injuries) by event type. This indicates that tornados lead to the greatest human loss of any individual event type.
+
+``` {r echo = TRUE}
+ggplot(healthsummary[order(healthsummary$TOTAL, decreasing = TRUE)[1:10],], aes(x = reorder(EVTYPE, TOTAL), y = TOTAL)) + geom_bar(stat="identity") + coord_flip() + xlab("Event") + ylab("Casualties") + ggtitle("Casualties by Event")
+```
+
+The below plot details the total economic loss (property and crop damage) by event type. This indicates that floods lead to the greatest economic loss of any individual event type.
+
+``` {r echo = TRUE}
+ggplot(damagesummary[order(damagesummary$TOTAL, decreasing = TRUE)[1:10],], aes(x = reorder(EVTYPE, TOTAL), y = TOTAL)) + geom_bar(stat="identity") + coord_flip() + xlab("Event") + ylab("Economic Losses") + ggtitle("Economic Losses by Event")
+```
